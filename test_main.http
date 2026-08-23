@@ -9,3 +9,18 @@ GET http://127.0.0.1:8000/hello/User
 Accept: application/json
 
 ###
+
+GET http://127.0.0.1:8000/health
+Accept: application/json
+
+###
+
+POST http://127.0.0.1:8000/chats?session_id=demo-1&message=Hello
+Accept: application/json
+
+###
+
+POST http://127.0.0.1:8000/chats?session_id=demo-1&message=What did I just say?
+Accept: application/json
+
+###
