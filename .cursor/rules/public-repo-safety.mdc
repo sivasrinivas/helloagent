@@ -1,0 +1,20 @@
+---
+description: Prevent committing secrets and Intuit-internal information
+alwaysApply: true
+---
+
+# Public Repo Safety
+
+This repository is public. Never include secrets or Intuit-internal information in code, docs, commit messages, PR text, or examples.
+
+- Do not commit credentials or secrets (API keys, tokens, passwords, private certs, cookies, `.env` values, connection strings).
+- Do not include Intuit-internal identifiers or content (internal URLs, hostnames, Slack channels, Jira links/IDs, customer/internal IDs, runbooks, wiki text, incident details).
+- Replace sensitive values with safe placeholders like `YOUR_API_KEY`, `example.com`, and `PROJECT-123`.
+- Before proposing a commit, explicitly check staged changes for sensitive strings and remove/redact anything risky.
+- If a user asks to commit sensitive data, refuse and suggest secure alternatives (env vars, secrets manager, local-only files, `.env.example`).
+
+## Pre-commit Safety Checklist
+
+- Verify no secrets are present in changed files.
+- Verify no Intuit-specific internal information is present.
+- Ensure examples and logs are sanitized.
