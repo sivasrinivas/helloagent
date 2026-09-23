@@ -1,7 +1,11 @@
 import json
 import os
+from datetime import datetime, timezone
+from typing import Any
+from uuid import uuid4
+
 from fastapi import FastAPI
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_ollama import ChatOllama
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, MessagesState, StateGraph
@@ -9,6 +13,7 @@ from urllib import request
 from urllib.error import URLError
 
 app = FastAPI()
+conversation_index: dict[str, dict[str, Any]] = {}
 
 
 def load_dotenv(path: str = ".env") -> None:
@@ -40,7 +45,6 @@ memory = InMemorySaver()
 
 
 def call_model(state: MessagesState) -> MessagesState:
-    print("messages before calling model: ", state["messages"])
     response = llm.invoke(state["messages"])
     return {"messages": [response]}
 
@@ -51,21 +55,97 @@ graph_builder.add_edge("call_model", END)
 chat_graph = graph_builder.compile(checkpointer=memory)
 
 
+def _extract_text(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                text = item.get("text")
+                if isinstance(text, str):
+                    parts.append(text)
+        return "".join(parts)
+    return str(content)
+
+
+def _serialize_messages(messages: list[BaseMessage]) -> list[dict[str, str]]:
+    serialized: list[dict[str, str]] = []
+    for msg in messages:
+        role = "assistant"
+        if isinstance(msg, HumanMessage):
+            role = "user"
+        elif isinstance(msg, AIMessage):
+            role = "assistant"
+        serialized.append({"role": role, "content": _extract_text(msg.content)})
+    return serialized
+
+
+def _get_thread_messages(session_id: str) -> list[BaseMessage]:
+    config = {"configurable": {"thread_id": session_id}}
+    state = chat_graph.get_state(config=config)
+    values = getattr(state, "values", None) or {}
+    messages = values.get("messages", [])
+    return messages if isinstance(messages, list) else []
+
+
+def _touch_conversation(session_id: str, first_message: str) -> None:
+    entry = conversation_index.setdefault(
+        session_id,
+        {
+            "session_id": session_id,
+            "title": first_message[:60] or f"Conversation {session_id[:8]}",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        },
+    )
+    entry["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+
 @app.post("/chats")
 async def chat(session_id: str, message: str):
     config = {"configurable": {"thread_id": session_id}}
     graph_input = {"messages": [HumanMessage(content=message)]}
 
     try:
+        _touch_conversation(session_id, message)
         result = chat_graph.invoke(graph_input, config=config)
         final_message = result["messages"][-1]
         if isinstance(final_message, AIMessage):
-            answer = final_message.content
+            answer = _extract_text(final_message.content)
         else:
             answer = str(final_message)
         return {"status": "ok", "session_id": session_id, "answer": answer}
     except Exception as err:
         return {"status": "error", "reason": str(err)}
+
+
+@app.post("/conversations")
+async def create_conversation() -> dict[str, str]:
+    session_id = uuid4().hex
+    _touch_conversation(session_id, "")
+    return {"status": "ok", "session_id": session_id}
+
+
+@app.get("/conversations")
+async def list_conversations() -> dict[str, list[dict[str, Any]]]:
+    conversations = sorted(
+        conversation_index.values(),
+        key=lambda item: item.get("updated_at", ""),
+        reverse=True,
+    )
+    return {"conversations": conversations}
+
+
+@app.get("/conversations/{session_id}")
+async def get_conversation(session_id: str) -> dict[str, Any]:
+    messages = _get_thread_messages(session_id)
+    return {
+        "session_id": session_id,
+        "messages": _serialize_messages(messages),
+        "exists": session_id in conversation_index or bool(messages),
+    }
 
 
 @app.get("/health")

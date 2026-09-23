@@ -24,3 +24,18 @@ POST http://127.0.0.1:8000/chats?session_id=demo-1&message=What did I just say?
 Accept: application/json
 
 ###
+
+POST http://127.0.0.1:8000/conversations
+Accept: application/json
+
+###
+
+GET http://127.0.0.1:8000/conversations
+Accept: application/json
+
+###
+
+GET http://127.0.0.1:8000/conversations/demo-1
+Accept: application/json
+
+###
